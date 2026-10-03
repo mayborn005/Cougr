@@ -8,8 +8,24 @@ on:
   workflow_dispatch:
 
 jobs:
+  detect-studio-server:
+    runs-on: ubuntu-latest
+    outputs:
+      server_exists: ${{ steps.check.outputs.server_exists }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          if [ -d studio/server ]; then
+            echo "server_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "server_exists=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping testnet smoke: studio/server does not exist yet."
+          fi
+
   testnet-smoke:
-    if: ${{ vars.COUGR_TESTNET_SMOKE == 'true' }}
+    needs: detect-studio-server
+    if: ${{ needs.detect-studio-server.outputs.server_exists == 'true' }}
     continue-on-error: true
     runs-on: ubuntu-latest
     steps:
@@ -21,7 +37,7 @@ jobs:
           cache-dependency-path: studio/package-lock.json
       - run: npm ci
         working-directory: studio
-      - run: npm run test -- --runInBand studio/tests/play-loop.spec.ts
+      - run: npx vitest run tests/play-loop.spec.ts
         working-directory: studio
         env:
           USE_REAL_SERVICES: true
