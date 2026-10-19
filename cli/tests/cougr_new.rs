@@ -147,6 +147,20 @@ fn add_list_shows_the_v1_pieces() {
 }
 
 #[test]
+fn add_list_rejects_a_piece_name_at_parse_time() {
+    let output = cougr(&["add", "--list", "session-auth"]);
+
+    assert!(!output.status.success());
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "--list with a piece name should be a clap usage error"
+    );
+    let message = stderr(&output);
+    assert!(message.contains("cannot be used with"), "{message}");
+}
+
+#[test]
 fn add_wires_a_piece_and_refuses_to_overwrite_it() {
     let dir = tempfile::tempdir().unwrap();
     let generated = generate("demo", "starter", dir.path());
@@ -174,8 +188,57 @@ fn add_wires_a_piece_and_refuses_to_overwrite_it() {
     assert!(stderr(&second).contains("src/session_auth.rs"));
 }
 
-/// The definition-of-done check: every template builds and its tests pass
-/// against the published `cougr-core`.
+#[test]
+fn add_outside_a_project_reports_the_error_and_a_hint() {
+    let dir = tempfile::tempdir().unwrap();
+
+    // Run `cougr add session-auth` in a directory that contains no Cargo.toml
+    // or src/lib.rs - simulates the common mistake of running from the repo
+    // root instead of the generated project subdirectory.
+    let output = Command::new(env!("CARGO_BIN_EXE_cougr"))
+        .args(["add", "session-auth"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let message = stderr(&output);
+    assert!(message.starts_with("error:"), "{message}");
+    assert!(!message.contains("panicked"), "{message}");
+    assert!(
+        message.contains("is not a Cougr project"),
+        "expected the InvalidProject message: {message}"
+    );
+    assert!(message.contains("help:"), "expected a hint: {message}");
+    assert!(
+        message.contains("cougr new"),
+        "expected the hint to mention `cougr new`: {message}"
+    );
+}
+
+#[test]
+fn add_with_path_from_outside_the_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let generated = generate("demo", "starter", dir.path());
+    assert!(generated.status.success(), "{}", stderr(&generated));
+    let project = dir.path().join("demo");
+
+    // `--path` lets `cougr add` target the generated project while the process
+    // runs from outside it: `current_dir` is the tempdir that holds `demo`.
+    let added = Command::new(env!("CARGO_BIN_EXE_cougr"))
+        .args(["add", "session-auth", "--path"])
+        .arg(&project)
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(added.status.success(), "{}", stderr(&added));
+    assert!(project.join("src/session_auth.rs").is_file());
+    assert!(std::fs::read_to_string(project.join("src/lib.rs"))
+        .unwrap()
+        .contains("pub mod session_auth;"));
+}
+
+/// Compile every template against the published `cougr-core`.
 ///
 /// Ignored by default because it downloads and compiles the Soroban SDK.
 #[test]

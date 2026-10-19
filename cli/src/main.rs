@@ -86,7 +86,7 @@ enum Command {
     /// are installed and meet the minimum versions:
     ///
     ///   - cargo (sanity check)
-    ///   - Rust toolchain (>= 1.70.0, from workspace Cargo.toml)
+    ///   - Rust toolchain (at least the CLI's `rust-version` from Cargo.toml)
     ///   - wasm32v1-none target (required for Soroban contracts)
     ///   - Stellar CLI (>= 21.0.0)
     ///
@@ -128,8 +128,12 @@ enum Command {
         piece: Option<String>,
 
         /// List all embedded capabilities.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "piece")]
         list: bool,
+
+        /// Directory of the target project. Defaults to the current directory.
+        #[arg(long, value_name = "DIR")]
+        path: Option<std::path::PathBuf>,
     },
 }
 
@@ -149,8 +153,8 @@ fn main() -> ExitCode {
             commands::new::export(&name, &config, path.as_deref()).map_err(anyhow::Error::from)
         }
 
-        Command::Add { piece, list } => {
-            pieces::run(piece.as_deref(), list).map_err(anyhow::Error::from)
+        Command::Add { piece, list, path } => {
+            pieces::run(piece.as_deref(), list, path.as_deref()).map_err(anyhow::Error::from)
         }
 
         Command::Check {
